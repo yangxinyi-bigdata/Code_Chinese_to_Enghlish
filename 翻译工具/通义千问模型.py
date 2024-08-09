@@ -1,12 +1,30 @@
 from openai import OpenAI
 import json
 import os
+from typing import List, Dict, Any
 from loguru import logger as 日志
 
-client = OpenAI(
-    api_key="sk-ec6d564ac02c46f086d06df15acc4c4c",  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",  # 填写DashScope服务的base_url
-)
+
+
+def 传入大模型返回JSON(messages: List[Dict[str, str]]) -> Dict[str, str]:
+    client = OpenAI(
+        api_key="sk-ec6d564ac02c46f086d06df15acc4c4c",  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",  # 填写DashScope服务的base_url
+    )
+
+    completion = client.chat.completions.create(
+        model="qwen-max",  # qwen-max
+        messages=messages,
+        # temperature=0.3
+    )
+
+    json_str = completion.choices[0].message.content
+    # 移除代码块标记
+    json_str = json_str.strip('```json\n').strip('```')
+    日志.debug("返回json字符串: {}", json_str)
+    # 将 JSON 字符串转换成 Python 字典
+    变量映射字典 = json.loads(json_str)
+    return 变量映射字典
 
 def 翻译中文变量(变量列表, 提示语_预备=""):
 
@@ -19,19 +37,9 @@ def 翻译中文变量(变量列表, 提示语_预备=""):
     日志.debug("提示语_完整: {}", 提示语_完整)
     messages = [{'role': 'system', 'content': '你是一个Python编程助手.'},
                 {'role': 'user', 'content': 提示语_完整}]
-    completion = client.chat.completions.create(
-        model="qwen-max",  # qwen-max
-        messages=messages,
-        # temperature=0.3
-    )
-    json_str = completion.choices[0].message.content
-    # 移除代码块标记
-    json_str = json_str.strip('```json\n').strip('```')
-    日志.debug("返回json字符串: {}", json_str)
-    # 将 JSON 字符串转换成 Python 字典
-    变量映射字典 = json.loads(json_str)
-    return 变量映射字典
 
+    变量映射字典 = 传入大模型返回JSON(messages)
+    return 变量映射字典
 
 def 处理重复变量(变量字典, 提示语_预备=""):
     """
@@ -48,17 +56,8 @@ def 处理重复变量(变量字典, 提示语_预备=""):
     日志.debug("提示语_完整: {}", 提示语_完整)
     messages = [{'role': 'system', 'content': '你是一个Python编程助手.'},
                 {'role': 'user', 'content': 提示语_完整}]
-    completion = client.chat.completions.create(
-        model="qwen-max",  # qwen-max
-        messages=messages,
-        # temperature=0.3
-    )
-    json_str = completion.choices[0].message.content
-    # 移除代码块标记
-    json_str = json_str.strip('```json\n').strip('```')
-    日志.debug("返回json字符串: {}", json_str)
-    # 将 JSON 字符串转换成 Python 字典
-    变量映射字典 = json.loads(json_str)
+
+    变量映射字典 = 传入大模型返回JSON(messages)
     return 变量映射字典
 
 
@@ -71,17 +70,7 @@ def 翻译文件名(变量列表, 提示语_预备=""):
     日志.debug("提示语_完整: {}", 提示语_完整)
     messages = [{'role': 'system', 'content': '你是一个Python编程助手.'},
                 {'role': 'user', 'content': 提示语_完整}]
-    completion = client.chat.completions.create(
-        model="qwen-max",  # qwen-max
-        messages=messages,
-        # temperature=0.3
-    )
-    json_str = completion.choices[0].message.content
-    # 移除代码块标记
-    json_str = json_str.strip('```json\n').strip('```')
-    日志.debug("返回json字符串: {}", json_str)
-    # 将 JSON 字符串转换成 Python 字典
-    变量映射字典 = json.loads(json_str)
+    变量映射字典 = 传入大模型返回JSON(messages)
     return 变量映射字典
 
 
