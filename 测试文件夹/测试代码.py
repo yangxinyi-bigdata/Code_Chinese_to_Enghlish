@@ -1,0 +1,41 @@
+import os
+from loguru import logger as 日志
+# from 示例代码.novel_send import 小说_发送_脚本
+#
+# import 示例代码.案例1
+#
+# import 示例代码
+# print(示例代码.__file__)
+# print(示例代码.__name__)
+# print(示例代码.__package__)
+# print(示例代码.__path__)
+# print(dir(示例代码))
+# print(示例代码.案例1.a)
+#
+# # print(dir(小说_发送_脚本))
+# print(小说_发送_脚本.__file__)
+# print(小说_发送_脚本.__name__)
+# # print(通义千问模型.__path__)
+
+# 日志.info("工作目录: {}", os.getcwd())
+# # 获取当前文件的绝对路径
+# current_file_path = os.path.abspath(__file__)
+# # 获取当前文件所在的目录
+# current_directory = os.path.dirname(current_file_path)
+# # 改变工作目录到当前文件所在的目录
+# os.chdir(current_directory)
+# 日志.info("工作目录已改变为: {}", os.getcwd())
+
+from typing import List as 列表测试, Dict, Any
+from 内置变量 import *
+
+
+print(二进制(3))
+
+打印("牛逼啊", "真的6", 分隔符="===")
+
+输出("牛逼啊", "真的6", 分隔符="===")
+
+a = "Abc"
+b = 字符串(a)
+打印(type(b))

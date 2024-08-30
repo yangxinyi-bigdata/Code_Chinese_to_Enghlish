@@ -474,7 +474,7 @@
     }
    },
    "cell_type": "code",
-   "source": "",
+   "source": "from 项目翻译 import *",
    "id": "86857cd77b13d180",
    "execution_count": 57,
    "outputs": []
