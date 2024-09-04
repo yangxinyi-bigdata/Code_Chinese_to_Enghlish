@@ -1,11 +1,11 @@
 import json
-import re
-import os, shutil
+import shutil
+
 import pandas as pd
 from loguru import logger as 日志
-from 翻译工具 import 通义千问模型
-from 内置变量 import *
+
 from 代码工具 import *
+from 翻译工具 import 通义千问模型
 from 通用处理 import *
 
 关联文件_列表 = []
@@ -149,7 +149,7 @@ def 字典重复值检测(输入字典):
 
 
 
-def 查询英文变量(英文变量列表, 变量位置):
+def 查询英文变量(英文变量列表):
     """读取已保存变量, 对其中已经保存的变量进行替换
     # 现在是获取到了一个集合, 我需要获取已保存变量, 这是一个字典, 然后
     :param 变量位置, 文件名称, 类名, 函数名, for循环, 等关键字, 根据不同的位置进行不同的处理
@@ -857,3 +857,13 @@ if __name__ == '__main__':
 
     # 接下来就是文件翻译, 文件当中的import要考虑到可能已经有部分文件夹翻译过了, 所以要根据代码当中的原路径进行判断.
     复制项目代码翻译(项目_根路径, 项目_翻译路径)
+
+
+
+
+
+
+
+
+
+
