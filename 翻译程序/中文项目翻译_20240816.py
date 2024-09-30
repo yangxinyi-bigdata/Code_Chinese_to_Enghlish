@@ -1,15 +1,13 @@
 import json
 import re
-import os, shutil
+import shutil
 import pandas as pd
-from pandas import DataFrame as 表格
 from loguru import logger as 日志
 from 翻译工具 import 通义千问模型
-from 内置变量 import *
 from 代码工具 import *
 
 关联文件_列表 = []
-已保存变量_路径 = "已保存变量.json"
+已保存变量_路径 = "中英映射字典.json"
 
 # 原始代码
 代码文本 = '''

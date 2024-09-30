@@ -2,12 +2,14 @@ import json
 import re
 import os
 from loguru import logger as 日志
-from 翻译工具 import 通义千问模型
-from 翻译工具.deepL翻译 import 翻译多个文本_函数
+from 翻译程序.翻译工具 import 通义千问模型
 
 关联文件_列表 = []
 收集_目录列表 = []
 收集_文件列表 = []
+dir_path = os.path.dirname(os.path.realpath(__file__))
+已保存变量_路径 = os.path.join(dir_path, "翻译程序", "中英映射字典.json")
+# 已保存变量_路径 = "翻译程序/中英映射字典.json"
 
 # 原始代码
 代码文本 = '''
@@ -64,22 +66,26 @@ class 小说处理器_类:
 
 
 def 匹配代码定义变量(代码文本):
-    # 正则表达式匹配使用等号定义的变量 a = b
-    # var_pattern = re.compile(r'([0-9a-zA-Z_\u4e00-\u9fa5]+)\s*=\s*')
-    var_pattern = re.compile(r'\s*([0-9a-zA-Z_\u4e00-\u9fa5, ]+)\s*=\s*[^\s=]+')
-    # 返回有可能是一个变量, 也可能是逗号分割的多个变量组成的字符串
-
-    # 提取所有变量名
-    匹配结果_列表 = var_pattern.findall(代码文本)
     匹配到变量_列表 = []
-    # 对变量列表进行循环, 如果包含逗号, 说明需要进一步处理
-    # ['c, d_d ']
-    for 元素 in 匹配结果_列表:
-        if "," in 元素:  # ['c, d_d ']
-            for 变量 in 元素.split(","):
-                匹配到变量_列表.append(变量.strip())
-        else:
-            匹配到变量_列表.append(元素.strip())
+    for 一行 in 代码文本.split("\n"):
+        一行 = 一行.strip()
+        # 首先判断不是注释内容, 注释不匹配
+        if not 一行.startswith("#"):  # 注释不处理
+            # 正则表达式匹配使用等号定义的变量 a = b
+            # var_pattern = re.compile(r'([0-9a-zA-Z_\u4e00-\u9fa5]+)\s*=\s*')
+            var_pattern = re.compile(r'\s*([0-9a-zA-Z_\u4e00-\u9fa5, ]+)\s*=\s*[^\s=]+')
+            # 返回有可能是一个变量, 也可能是逗号分割的多个变量组成的字符串
+            # 提取所有变量名
+            匹配结果_列表 = var_pattern.findall(一行)
+
+            # 对变量列表进行循环, 如果包含逗号, 说明需要进一步处理
+            # ['c, d_d ']
+            for 元素 in 匹配结果_列表:
+                if "," in 元素:  # ['c, d_d ']
+                    for 变量 in 元素.split(","):
+                        匹配到变量_列表.append(变量.strip())
+                else:
+                    匹配到变量_列表.append(元素.strip())
 
     return 匹配到变量_列表
 
@@ -126,15 +132,17 @@ def 提取导入变量(代码文本):
             for 一个 in import_后面文本_切分:
                 if 一个.find("as") < 0:  # 没有as, 直接保存
                     变量列表.append(一个.strip())
+                    关联文件_列表.append(一个.strip())
                 else:  # 有as, 提取后面部分
                     变量列表.append(一个.split("as")[0].strip())
                     变量列表.append(一个.split("as")[-1].strip())
+                    关联文件_列表.append(一个.split("as")[0].strip())
 
     return 变量列表
 
 
 def 固定语法匹配(代码文本):
-    def_pattern = r"def ([0-9a-zA-Z_\u4e00-\u9fa5]+)\((.*)\)"
+    def_pattern = r"def ([0-9a-zA-Z_\u4e00-\u9fa5]+)\((.*)\):"
 
     变量列表 = []
     函数匹配结果_列表 = re.findall(def_pattern, 代码文本)
@@ -143,7 +151,7 @@ def 固定语法匹配(代码文本):
         函数名称, 函数参数名称 = 一个
         变量列表.append(函数名称)
         if 函数参数名称:
-            函数参数名称_列表 = [i.strip() for i in 函数参数名称.split(",")]
+            函数参数名称_列表 = [i.strip().split("=")[0] for i in 函数参数名称.split(",")]
             变量列表.extend(函数参数名称_列表)
 
     class_pattern = r"class ([0-9a-zA-Z_\u4e00-\u9fa5]+).*\:"
@@ -188,7 +196,7 @@ def 遍历目录和文件列表(开始目录='.', 忽略目录=None):
         for 文件 in 文件列表:
             收集_文件列表.append(os.path.join(目录路径, 文件))
 
-def 关联文件判断():
+def 关联文件判断(项目绝对路径):
     """函数功能:
     公共列表, 关联文件_列表 中保存着import的其他文件,
 
@@ -205,14 +213,35 @@ def 关联文件判断():
     1. 判断改文件名中是否包含中国字
     2. 如果包含中国字, 再判断该文件是否在当前项目当中, 如果在当前项目当中, 再判断是目录还是py文件.
     如果是目录, 则批量替换"""
-    关联中文文件_列表 = 中文变量列表(关联文件_列表)
-    遍历目录和文件列表()  # 收集_目录列表 收集_文件列表
+    关联中文文件_列表 = 提取中文变量(关联文件_列表)
+    日志.debug("关联中文文件_列表: {}", 关联中文文件_列表)
+    遍历目录和文件列表(项目绝对路径)  # 收集_目录列表 收集_文件列表
     # 对 关联中文文件_列表 中的进行判断
+    日志.debug("收集_目录列表: {}", 收集_目录列表)
+    日志.debug("收集_文件列表: {}", 收集_文件列表)
+    目录名称映射字典 = {}
+    for 完整目录 in 收集_目录列表:
+        目录名称 = 完整目录.split("/")[-1]
+        目录名称映射字典[目录名称] = 完整目录
+
+    文件名称映射字典 = {}
+    for 完整文件 in 收集_文件列表:
+        文件名称 = 完整文件.split("/")[-1]
+        文件名称映射字典[文件名称] = 完整文件
+
     for 中文变量 in 关联中文文件_列表:
-        if 中文变量 in 收集_目录列表:
-            # 进行目录相关处理
-            # todo
-            pass
+        # /Users/yangxinyi/Library/CloudStorage/OneDrive-个人/100_code/Code_Chinese_to_Enghlish/示例代码/__init__.py
+        # 注意这里面提取出的中文变量, 很可能并没有运行.
+        if 中文变量 in 目录名称映射字典.keys():  # 目录
+            # 在同一层级, 创建一个文件夹
+            目录映射字典 = 通义千问模型.翻译文件名(中文变量)
+            翻译英文名称 = 目录映射字典[中文变量]
+            完整目录 = 目录名称映射字典[中文变量]
+            上层目录 = 完整目录[:-len(中文变量)]
+            日志.debug(上层目录 + 翻译英文名称)
+            os.mkdir(上层目录 + 翻译英文名称)
+
+
         elif 中文变量 in 收集_文件列表:
             # 传到递归函数里面再次进行处理
             # todo
@@ -222,14 +251,14 @@ def 关联文件判断():
 
 def 读取已保存变量():
     # 检查文件是否存在
-    已保存变量_路径 = "已保存变量.json"
-    # 获取当前文件的绝对路径
-    current_file_path = os.path.abspath(__file__)
-    # 获取当前文件所在的目录
-    current_directory = os.path.dirname(current_file_path)
-    # 改变工作目录到当前文件所在的目录
-    os.chdir(current_directory)
-    日志.info("工作目录已改变为: {}", os.getcwd())
+
+    # # 获取当前文件的绝对路径
+    # current_file_path = os.path.abspath(__file__)
+    # # 获取当前文件所在的目录
+    # current_directory = os.path.dirname(current_file_path)
+    # # 改变工作目录到当前文件所在的目录
+    # os.chdir(current_directory)
+    # 日志.info("工作目录已改变为: {}", os.getcwd())
     if not os.path.exists(已保存变量_路径):
         with open(已保存变量_路径, 'w', encoding='utf-8') as f:
             json.dump({"测试": "test"}, f, ensure_ascii=False, indent=4)
@@ -237,6 +266,13 @@ def 读取已保存变量():
     with open(已保存变量_路径, 'r', encoding='utf-8') as f:
         已保存变量 = json.load(f)
     return 已保存变量
+
+
+def 保存合并后变量(合并后变量):
+    """传入的应该是一个完整的字典, 然后将字典的值保存进来? """
+    with open(已保存变量_路径, 'w', encoding='utf-8') as f:
+        json.dump(合并后变量, f, ensure_ascii=False, indent=4)
+
 
 
 def 翻转字典_函数(输入字典):
@@ -260,7 +296,6 @@ def 字典重复值检测(输入字典):
     return 重复项
 
 def 查询并合并变量(中文变量列表):
-    已保存变量_路径 = "已保存变量.json"
     # 读取已保存变量, 对其中已经保存的变量进行替换
     # 现在是获取到了一个集合, 我需要获取已保存变量, 这是一个字典, 然后
     已保存变量 = 读取已保存变量()
@@ -294,14 +329,12 @@ def 查询并合并变量(中文变量列表):
         合并后变量.update(去重字典)
     else:
         日志.debug("未检测到重复项")
-    with open(已保存变量_路径, 'w', encoding='utf-8') as f:
-        json.dump(合并后变量, f, ensure_ascii=False, indent=4)
+    保存合并后变量(合并后变量)
     return 合并后变量
 
 
-if __name__ == '__main__':
-    待处理_代码路径 = "/Users/yangxinyi/Library/CloudStorage/OneDrive-个人/100_code/Code_Chinese_to_Enghlish/中文变量翻译.py"
-    with open(待处理_代码路径, "r") as 文件:
+def 代码文件翻译(代码_绝对路径):
+    with open(代码_绝对路径, "r") as 文件:
         代码文本 = 文件.read()
     变量列表 = []
     变量列表1 = 匹配代码定义变量(代码文本)
@@ -315,22 +348,51 @@ if __name__ == '__main__':
     中文变量列表 = 提取中文变量(变量列表_集合)
     日志.debug(中文变量列表)
     合并后变量_字典 = 查询并合并变量(中文变量列表)
-
     # 替换变量名
     for 变量 in 中文变量列表:
         if 变量 in 合并后变量_字典:
             代码文本 = re.sub(r'\b' + re.escape(变量) + r'\b', 合并后变量_字典[变量], 代码文本)
 
     # 保存修改后英文代码, 保存在同一个路径, 文件名称, 原来的中文文件名称翻译成一个英文的文件名称
-    代码所在目录 = os.path.dirname(待处理_代码路径)
+    代码所在目录 = os.path.dirname(代码_绝对路径)
     # 提取文件名部分
-    文件名 = os.path.basename(待处理_代码路径)
+    文件名 = os.path.basename(代码_绝对路径)
     文件名前缀, 文件名后缀 = 文件名.split(".")
     文件名前缀_翻译 = 通义千问模型.翻译文件名(文件名前缀)
+    # 将翻译的结果也保存到变量中
+    已保存变量 = 读取已保存变量()
+    已保存变量.setdefault(文件名前缀, 文件名前缀_翻译[文件名前缀])
+    保存合并后变量(已保存变量)
 
     英文代码_保存路径 = 代码所在目录 + "/" + 文件名前缀_翻译[文件名前缀] + "." + 文件名后缀
     with open(英文代码_保存路径, "w") as f:
         f.write(代码文本)
+
+
+if __name__ == '__main__':
+    # 项目根目录的绝对路径
+    项目_根路径 = '/Users/yangxinyi/Library/CloudStorage/OneDrive-个人/100_code/Test_Translate_Project'
+    # 项目根目录的绝对路径
+    # 待处理_代码路径 = "/Users/yangxinyi/Library/CloudStorage/OneDrive-个人/100_code/Code_Chinese_to_Enghlish/中文变量翻译.py"
+    # 代码文件翻译(待处理_代码路径)
+    # 日志.info(关联文件_列表)
+    # 日志.info(收集_文件列表)
+    # 关联文件判断(project_root)
+    遍历目录和文件列表(项目_根路径)  # 收集_目录列表 收集_文件列表
+    日志.info("收集_目录列表: {}", 收集_目录列表)  # 这里返回的是完整的路径, 我要做的是
+    日志.info("收集_文件列表: {}", 收集_文件列表)
+
+    # # 收集_目录列表 中的是完整路径, 提取出最后一层目录或者路径
+    # for i in 收集_目录列表:
+    #     i.split("")
+    # # 对 收集_目录列表 中的变量判断是否包含中文, 过滤出包含中文的
+    # 提取中文变量()
+
+
+
+
+
+
 
 
 
