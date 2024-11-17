@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import shutil
 import re
 from loguru import logger as 日志
 import pandas as pd
@@ -13,14 +14,12 @@ from 翻译程序.代码工具 import *
 from 翻译程序.翻译工具 import 通义千问模型
 from 配置 import 载入配置
 
-
 关联文件_列表 = []
 # 中英映射变量_路径 = "翻译程序/中英映射字典.json"
 # 英中映射变量_路径 = "翻译程序/英中映射字典.json"
 # 英中重复变量_路径 = "翻译程序/英中重复变量.txt"
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
-
 
 中英映射变量_路径 = os.path.join(dir_path, "中英映射字典.json")
 英中映射变量_路径 = os.path.join(dir_path, "英中映射字典.json")
@@ -32,19 +31,24 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 
 配置 = 载入配置()
 
+
 def 设置进度值(任务进度值):
     global 任务进度
     任务进度 = 任务进度值
+
 
 def 设置状态值(状态信息值):
     global 状态信息
     状态信息 = 状态信息值
 
+
 def 获取状态值():
     return 状态信息
 
+
 def 获取进度值():
     return 任务进度
+
 
 class Rope管理器:
     def __init__(self, 项目路径):
@@ -72,7 +76,6 @@ class Rope管理器:
     def 创建资源(self, 资源名称, 类型=None):
         self.我的资源 = libutils.path_to_resource(self.我的项目,
                                                   self.项目路径 + "/" + 资源名称, 类型)
-
 
     def 搜索变量偏移量(self, 行号, 变量, 变量资源):
         """这里不应该简单的计算偏移量, 应该按照代码实际来进行计算
@@ -242,7 +245,6 @@ class Rope管理器:
             self.监控范围 = 子监控范围
             self.提取范围变量()
 
-
     def 过滤变量并翻译(self):
         """rope管理.提取变量表格 这里面已经保存了当前代码提取出来的所有变量
         接下来判断哪个变量需要进行翻译, 然后调用rope里面的Rename功能进行重命名
@@ -268,10 +270,12 @@ class Rope管理器:
                     continue
                 elif isinstance(self.提取变量表格.loc[index, "推断类型"], PyFunction):
                     self.提取变量表格.loc[index, "翻译变量"] = 翻译变量映射字典[
-                                                                   self.提取变量表格.loc[index, "变量名称"]] + 配置.获取配置项("函数后缀")
+                                                                   self.提取变量表格.loc[
+                                                                       index, "变量名称"]] + 配置.获取配置项("函数后缀")
                 elif isinstance(self.提取变量表格.loc[index, "推断类型"], PyClass):
                     self.提取变量表格.loc[index, "翻译变量"] = 翻译变量映射字典[
-                                                                   self.提取变量表格.loc[index, "变量名称"]] + 配置.获取配置项("类后缀")
+                                                                   self.提取变量表格.loc[
+                                                                       index, "变量名称"]] + 配置.获取配置项("类后缀")
                 else:
                     self.提取变量表格.loc[index, "翻译变量"] = 翻译变量映射字典[
                         self.提取变量表格.loc[index, "变量名称"]]
@@ -459,7 +463,7 @@ class Rope管理器:
 
         self.py文件列表, self.相对文件列表, self.相对目录列表 = 收集项目资源(self.项目路径)
 
-    def 重命名变量(self, 行号, 变量资源, 翻译变量=None, 变量翻译结果=None):
+    def 重命名变量(self, 行号, 变量资源, 翻译变量=None, 变量翻译结果=None, 翻译资源: list = None):
         if not 翻译变量:
             renamer = Rename(self.我的项目, 变量资源)
             change = renamer.get_changes(变量翻译结果)
@@ -471,12 +475,83 @@ class Rope管理器:
                 try:
                     renamer = Rename(self.我的项目, 变量资源, 偏移量)
                     # 获取重命名变更
-                    change = renamer.get_changes(变量翻译结果)
+                    change = renamer.get_changes(变量翻译结果, resources=翻译资源)
                     self.我的项目.do(change)
                 except (RefactoringError, BadIdentifierError, RecursionError) as e:
                     日志.error("报错类型: {} 报错信息: {} 翻译变量: {} 行号: {} 偏移量: {} 翻译文件: {}",
-                        type(e).__name__, e, 翻译变量, 行号, 偏移量,
-                        变量资源.real_path)
+                               type(e).__name__, e, 翻译变量, 行号, 偏移量,
+                               变量资源.real_path)
+
+
+class Rope单文件管理器(Rope管理器):
+    def __init__(self, 文件路径):
+        self.我的资源 = None
+        self.监控范围 = None
+        self.资源路径 = 文件路径
+        self.上层文件夹, self.文件名称 = 文件路径.rsplit("/", maxsplit=1)
+        项目路径 = self.上层文件夹
+
+        self.导入模块列表: list = []
+        self.导入目录列表: list = []
+        self.提取变量表格 = pd.DataFrame(
+            columns=["监控范围标识", "变量名称", "翻译变量", "去重变量", "变量种类", "推断类型", "变量对象",
+                     "变量对象_数据类型", "变量资源"])
+        self.提取导入变量表格 = pd.DataFrame(
+            columns=["监控范围标识", "变量名称", "翻译变量", "去重变量", "变量种类", "推断类型", "变量对象",
+                     "变量对象_数据类型", "变量资源"])
+        self.我的项目 = Project(项目路径)
+
+    def 创建复制资源(self, 类型="file"):
+        """ 不管是py文件还是ipynb文件, 都可以成功复制
+
+        这里在翻译过程中要考虑, 如果要翻译的是英文变量, 但文件名称是中文的, 那么就无法获得翻译结果.
+        因此这种情况应该重新指定名称, 后面添加后缀 _翻译"""
+        文件前缀, 文件后缀 = self.文件名称.rsplit(".", maxsplit=1)
+        翻译py文件映射字典 = 过滤并查询英文变量_V2([文件前缀])
+        if 翻译py文件映射字典.get(文件前缀):
+            翻译文件名称 = 翻译py文件映射字典[文件前缀] + "." + 文件后缀
+            翻译文件路径 = self.上层文件夹 + "/" + 翻译文件名称
+            shutil.copy(self.资源路径, 翻译文件路径)
+            self.我的资源 = libutils.path_to_resource(self.我的项目, 翻译文件路径, 类型)
+        else:  # 没翻译到结果, 直接复制一个添加后缀的
+            翻译文件路径 = self.上层文件夹 + "/" + 文件前缀 + "_翻译" + "." + 文件后缀
+            shutil.copy(self.资源路径, 翻译文件路径)
+            self.我的资源 = libutils.path_to_resource(self.我的项目, 翻译文件路径, 类型)
+
+
+    def 创建资源(self, 资源名称, 类型=None):
+        self.我的资源 = libutils.path_to_resource(self.我的项目, 资源名称, 类型)
+
+    def 批量替换变量(self):
+        """self.提取变量表格, 根据这个进行已翻译"""
+        总任务数量 = self.提取变量表格.index.shape[0]
+        for index in self.提取变量表格.index:
+            # 根据当前变量所在文件, 替换资源
+            模块, 行号 = self.提取变量表格.loc[index, "变量种类"].get_definition_location()
+            # 发现这里行号有可能存在错误, 这里判断module, 如果module不是当前资源, 判断是不是在项目内的模块, 如果不是, 则跳过
+            if 模块:
+                模块名称 = 模块.get_name()
+                变量资源 = self.提取变量表格.loc[index, "变量资源"]
+                # 判断模块是否在项目内, 如果是当前处理的代码
+                if 模块名称 != 变量资源.path.removesuffix(".py").replace("/", ".") and (
+                        模块名称 != 变量资源.path.removesuffix(".py").split("/")[-1]):  # 不是当前处理模块, 则判断是否内置模块
+                    if 模块名称 not in self.导入模块列表 or 模块名称 not in self.导入目录列表:
+                        continue
+            else:
+                continue
+
+            # 如果存在去重变量, 则使用 去重变量, 否则使用 翻译变量
+            变量名称 = self.提取变量表格.loc[index, "变量名称"]
+            if self.提取变量表格.loc[index, "去重变量"]:
+                翻译变量 = self.提取变量表格.loc[index, "去重变量"]
+            elif self.提取变量表格.loc[index, "翻译变量"]:
+                翻译变量 = self.提取变量表格.loc[index, "翻译变量"]
+            self.重命名变量(行号, 变量资源, 变量名称, 翻译变量, 翻译资源=[变量资源])
+
+            # 计算任务进度
+            设置进度值(50 + int(((index + 1) / 总任务数量) * 100 * 0.5))
+
+
 
 
 def 过滤并查询英文变量_V2(英文变量列表):
@@ -488,7 +563,30 @@ def 过滤并查询英文变量_V2(英文变量列表):
     # 去重
     英文变量列表 = list(set(英文变量列表))
 
-    英文变量列表 = [元素 for 元素 in 英文变量列表 if len(元素) > 1 and 元素 != "self" and not 元素.startswith(".") and not (元素.startswith("__") and 元素.endswith("__"))]
+    def 检查是否含有英文(text):
+        # 使用正则表达式查找长度大于等于3的英文单词
+        pattern = r'[a-zA-Z]{3,}'
+        result = re.search(pattern, text)
+        return result is not None
+
+    def 检查是否python英文变量(name):
+        # 检查是否是字母或下划线开头
+        if not name or not name[0].isalpha() and name[0] != '_':
+            return False
+        # 检查是否包含非ASCII字符
+        if not name.isascii():
+            return False
+        # 检查剩余字符是否仅由字母、数字或下划线构成
+        if not all(c.isalnum() or c == '_' for c in name):
+            return False
+        return True
+
+    英文变量列表 = [元素 for 元素 in 英文变量列表 if len(元素) > 1
+                    and 元素 != "self" and not 元素.startswith(".")
+                    and not (元素.startswith("__") and 元素.endswith("__"))
+                    and 检查是否python英文变量(元素)]
+
+    # 如果有多个英文变量, 判断其中每一个是否含有英文单词, 如果没有, 则去掉.
 
     # 有一个集合和一个字典, 现在需要从集合中提取出所有不在字典的key当中的数据
     未保存变量 = [元素 for 元素 in 英文变量列表 if not 英中映射变量.get(元素)]
@@ -539,9 +637,11 @@ def 过滤并查询英文变量_V2(英文变量列表):
 
     return 翻译变量映射字典
 
+
 def 读取代码文本(绝对路径):
     with open(绝对路径) as f:
         return f.read()
+
 
 def 判断子目录(父目录, 子目录):
     # 转换为 Path 对象
@@ -550,8 +650,6 @@ def 判断子目录(父目录, 子目录):
 
     # 使用 .parents 检查 parent_path 是否是 child_path 的父目录
     return 父目录_路径 in 子目录_路径.parents
-
-
 
 
 def 遍历目录和文件列表(开始目录='.', 忽略目录=None):
@@ -640,6 +738,7 @@ def 保存英中变量(合并后变量):
     with open(英中映射变量_路径, 'w', encoding='utf-8') as f:
         json.dump(合并后变量, f, ensure_ascii=False, indent=4)
 
+
 def 保存英中重复变量(重复变量: pd.DataFrame):
     """传入的应该是一个完整的字典, 然后将字典的值保存进来? """
     重复变量.to_csv(英中重复变量_路径, index=True)
@@ -703,6 +802,44 @@ def 提取中文变量(代码文本, 引号=0):
     return 中文变量_集合
 
 
+def 替换代码变量_函数(代码文本, 变量映射, 引号=0):
+    """引号:
+    1: 开启引号中的中文匹配
+
+    0: 去掉引号中的中文提取
+    """
+    # 匹配注释部分
+    注释匹配模式 = r'(#.*?)\n'
+    # 识别所有的字符串部分 (包括单引号和双引号, 以及单行和多行字符串)
+    字符串匹配模式 = r'(\"\"\".*?\"\"\"|\'\'\'.*?\'\'\'|\".*?\"|\'.*?\')'
+    # 修改为跨行匹配模式
+    多行字符串匹配模式 = r'(\"\"\".*?\"\"\"|\'\'\'.*?\'\'\')'
+
+    # 用于替换的回调函数
+    def 替换函数(匹配结果):
+        匹配文本 = 匹配结果.group(0)
+        if 匹配文本.startswith(('"', "'", "#")):
+            # 如果是字符串（包括多行字符串），直接返回不做替换
+            return 匹配文本
+        else:
+            # 如果是变量名，根据映射进行替换
+            return 变量映射.get(匹配文本, 匹配文本)
+
+    # 构造变量名的正则表达式 (注意这里使用了 \b 进行词边界匹配)
+    变量匹配模式 = r'\b(' + '|'.join(re.escape(翻译变量) for 翻译变量 in 变量映射.keys()) + r')\b'
+
+    if not 引号:
+        # 合并字符串匹配模式和变量匹配模式
+        综合匹配模式 = 注释匹配模式 + r'|' + 多行字符串匹配模式 + r'|' + 字符串匹配模式 + r'|' + 变量匹配模式
+    else:
+        综合匹配模式 = 注释匹配模式 + r'|' + 多行字符串匹配模式 + r'|' + 变量匹配模式
+
+    # 使用 sub 函数进行替换，结合字符串的保护
+    代码文本 = re.sub(综合匹配模式, 替换函数, 代码文本, flags=re.DOTALL)
+
+    return 代码文本
+
+
 def 过滤中文变量(变量列表):
     # 过滤掉英文变量, 如果是中英文混合的, 只要其中包含中文变量
     中文变量列表 = {变量 for 变量 in 变量列表 if any('\u4e00' <= char <= '\u9fff' for char in 变量)}
@@ -732,7 +869,8 @@ def 删除代码注释和字符串(代码文本, 引号=0):
     综合匹配模式 = 注释匹配模式 + r'|' + 多行字符串匹配模式 + r'|' + 字符串匹配模式
 
     # 替换时保留换行符
-    替换结果 = re.sub(综合匹配模式, lambda m: '""' + (m.group(2) if m.lastindex == 2 else ''), 代码文本, flags=re.DOTALL)
+    替换结果 = re.sub(综合匹配模式, lambda m: '""' + (m.group(2) if m.lastindex == 2 else ''), 代码文本,
+                      flags=re.DOTALL)
 
     return 替换结果
 
@@ -828,6 +966,7 @@ def 提取导入变量_通用(代码文本):
 
     return 变量列表_key, 变量_as
 
+
 def 提取导入变量_行号(代码文本):
     """提取所有import 变量和 from xxx import xxx
     对提取出的每个变量记录行号, 以及位置.
@@ -835,10 +974,10 @@ def 提取导入变量_行号(代码文本):
 
     首先思考一下用什么格式保存数据, 还是DataFrame吧.
     """
-    导入变量表格 = pd.DataFrame(columns=["行号", "from变量", "from拆分", "import变量", "import拆分", "import变量翻译", "import位置",
-                                         "as变量", "as变量翻译", "as位置", "项目内部标识", "包含中文", "关联文件"])
+    导入变量表格 = pd.DataFrame(
+        columns=["行号", "from变量", "from拆分", "import变量", "import拆分", "import变量翻译", "import位置",
+                 "as变量", "as变量翻译", "as位置", "项目内部标识", "包含中文", "关联文件"])
     导入变量表格["import变量翻译"] = 导入变量表格["import变量翻译"].astype(object)
-
 
     for 索引, 一行 in enumerate(代码文本.split("\n")):
         行号 = 索引 + 1
@@ -1039,7 +1178,66 @@ def 检查变量字典错误():
             日志.error("变量: {}, 映射变量: {}", 变量, 英中映射变量[变量])
 
 
+
+def ipynb转换成py(notebook):
+    py_code = ""
+    for cell in notebook['cells']:
+        if cell['cell_type'] == 'code':
+            # 将代码转换成字符串
+            code = ''.join(cell['source'])
+
+            # 检测并处理魔法命令
+            code_lines = code.splitlines()
+            for line in code_lines:
+                if re.match(r'^\s*%', line):  # 如果该行是魔法命令
+                    # 将魔法命令转换为注释，或者可以选择跳过这一行
+                    py_code += '# ' + line + '\n'
+                else:
+                    py_code += line + '\n'
+
+        elif cell['cell_type'] == 'markdown':
+            # 将 Markdown 内容转换为注释
+            comments = ''.join(cell['source'])
+            comment_lines = comments.splitlines()
+            for line in comment_lines:
+                py_code += '# ' + line + '\n'
+
+    return py_code
+
+def 提取jupyter代码(notebook: dict):
+    """只提取jupyter代码部分, 在每个cell中间添加区分符号, 可以还原回原来的code当中
+    :arg notebook: ipynb读取的json, 转换成dict
+    :return py_code: 提取出的代码, 用户传入rope提取变量和翻译"""
+    py_code = ""
+    for cell in notebook['cells']:
+        if cell['cell_type'] == 'code':
+
+            # 将代码转换成字符串
+            code = ''.join(cell['source'])
+            if code:
+                # 检测并处理魔法命令
+                code_lines = code.splitlines()
+                for line in code_lines:
+                    if re.match(r'^\s*%', line):  # 如果该行是魔法命令
+                        # 将魔法命令转换为注释，或者可以选择跳过这一行
+                        py_code += '# ' + line + '\n'
+                    else:
+                        py_code += line + '\n'
+            py_code += "# Ú" + "\n"
+    return py_code
+
+
+def 替换jupyter代码(notebook, 代码文本):
+    # 将 代码文本 处理回去
+    id_cell = 0
+    py_code_split_cell = 代码文本.split("# Ú\n")
+    for cell in notebook['cells']:
+        if cell['cell_type'] == 'code':
+            # 将py_code处理回去
+            cell_code = py_code_split_cell[id_cell].removesuffix("\n").splitlines(keepends=True)
+            cell['source'] = cell_code
+            id_cell += 1
+
+
 if __name__ == '__main__':
     检查变量字典错误()
-
-
